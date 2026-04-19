@@ -1,0 +1,120 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Category {
+  id       String    @id @default(cuid())
+  slug     String    @unique
+  name     String
+  products Product[]
+}
+
+model Product {
+  id          String           @id @default(cuid())
+  name        String
+  description String
+  images      String[]
+  basePrice   Float
+  categoryId  String
+  category    Category         @relation(fields: [categoryId], references: [id])
+  variants    ProductVariant[]
+  createdAt   DateTime         @default(now())
+}
+
+model Filament {
+  id          String           @id @default(cuid())
+  name        String
+  hexCode     String
+  stockGrams  Float
+  variants    ProductVariant[]
+}
+
+model ProductVariant {
+  id              String      @id @default(cuid())
+  productId       String
+  product         Product     @relation(fields: [productId], references: [id])
+  filamentId      String
+  filament        Filament    @relation(fields: [filamentId], references: [id])
+  size            Size
+  priceMultiplier Float       @default(1.0)
+  stockQty        Int
+  orderItems      OrderItem[]
+}
+
+enum Size {
+  S
+  M
+  L
+}
+
+model Order {
+  id        String      @id @default(cuid())
+  userId    String?
+  user      User?       @relation(fields: [userId], references: [id])
+  status    OrderStatus @default(PENDING)
+  total     Float
+  email     String
+  address   Json
+  items     OrderItem[]
+  stripeId  String?
+  createdAt DateTime    @default(now())
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  FAILED
+  CANCELLED
+}
+
+model OrderItem {
+  id              String         @id @default(cuid())
+  orderId         String
+  order           Order          @relation(fields: [orderId], references: [id])
+  variantId       String
+  variant         ProductVariant @relation(fields: [variantId], references: [id])
+  quantity        Int
+  priceAtPurchase Float
+}
+
+model User {
+  id       String    @id @default(cuid())
+  email    String    @unique
+  name     String?
+  password String?
+  address  Json?
+  orders   Order[]
+  accounts Account[]
+  sessions Session[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
