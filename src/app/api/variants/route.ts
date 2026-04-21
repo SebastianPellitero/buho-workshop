@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
 import type { ApiResponse } from "@/types";
+import { MOCK_PRODUCTS } from "@/lib/mockData";
 
 interface StockResult {
   variantId: string;
@@ -14,7 +14,14 @@ interface BulkStockResult {
   requested: number;
 }
 
-// GET /api/variants?id=xxx  — single variant stock check
+function findVariant(variantId: string) {
+  for (const p of MOCK_PRODUCTS) {
+    const v = p.variants.find((v) => v.id === variantId);
+    if (v) return v;
+  }
+  return null;
+}
+
 export async function GET(req: NextRequest) {
   const variantId = req.nextUrl.searchParams.get("id");
 
@@ -25,69 +32,42 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  try {
-    const variant = await prisma.productVariant.findUnique({
-      where: { id: variantId },
-      select: { stockQty: true },
-    });
+  const variant = findVariant(variantId);
 
-    if (!variant) {
-      return NextResponse.json<ApiResponse<StockResult>>(
-        { data: null, error: "Variant not found" },
-        { status: 404 }
-      );
-    }
-
-    return NextResponse.json<ApiResponse<StockResult>>({
-      data: { variantId, stockQty: variant.stockQty },
-      error: null,
-    });
-  } catch {
+  if (!variant) {
     return NextResponse.json<ApiResponse<StockResult>>(
-      { data: null, error: "Failed to fetch stock" },
-      { status: 500 }
+      { data: null, error: "Variant not found" },
+      { status: 404 }
     );
   }
+
+  return NextResponse.json<ApiResponse<StockResult>>({
+    data: { variantId, stockQty: variant.stockQty },
+    error: null,
+  });
 }
 
-// POST /api/variants  — bulk stock validation before checkout
-// Body: { items: CartItem[] }
 export async function POST(req: NextRequest) {
-  try {
-    const body = (await req.json()) as {
-      items: { variantId: string; quantity: number }[];
-    };
+  const body = (await req.json()) as {
+    items: { variantId: string; quantity: number }[];
+  };
 
-    if (!Array.isArray(body.items)) {
-      return NextResponse.json<ApiResponse<BulkStockResult[]>>(
-        { data: null, error: "items must be an array" },
-        { status: 400 }
-      );
-    }
-
-    const results = await Promise.all(
-      body.items.map(async ({ variantId, quantity }) => {
-        const variant = await prisma.productVariant.findUnique({
-          where: { id: variantId },
-          select: { stockQty: true },
-        });
-        return {
-          variantId,
-          stockQty: variant?.stockQty ?? 0,
-          available: (variant?.stockQty ?? 0) >= quantity,
-          requested: quantity,
-        };
-      })
-    );
-
-    return NextResponse.json<ApiResponse<BulkStockResult[]>>({
-      data: results,
-      error: null,
-    });
-  } catch {
+  if (!Array.isArray(body.items)) {
     return NextResponse.json<ApiResponse<BulkStockResult[]>>(
-      { data: null, error: "Failed to validate stock" },
-      { status: 500 }
+      { data: null, error: "items must be an array" },
+      { status: 400 }
     );
   }
+
+  const data: BulkStockResult[] = body.items.map(({ variantId, quantity }) => {
+    const variant = findVariant(variantId);
+    return {
+      variantId,
+      stockQty: variant?.stockQty ?? 0,
+      available: (variant?.stockQty ?? 0) >= quantity,
+      requested: quantity,
+    };
+  });
+
+  return NextResponse.json<ApiResponse<BulkStockResult[]>>({ data, error: null });
 }
